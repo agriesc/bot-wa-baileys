@@ -8,7 +8,7 @@ const {
 const qrcode = require("qrcode-terminal");
 const P = require("pino");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
-const credentials = {
+const creds = {
   type: "service_account",
   project_id: process.env.GOOGLE_PROJECT_ID,
   private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
