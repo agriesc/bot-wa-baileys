@@ -120,8 +120,15 @@ startSock();
 const express = require("express");
 const app = express();
 
-app.get("/", (_, res) => {
-  res.send("Bot is running");
+app.get("/", (req, res) => {
+  res.send("Bot WA Aktif 🚀");
+});
+
+app.get("/ping", (req, res) => {
+  res.status(200).json({
+    status: "alive",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 const PORT = process.env.PORT || 3000;
