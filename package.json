@@ -2,9 +2,10 @@
   "name": "bot-wa-baileys",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+ "scripts": {
+  "start": "node --openssl-legacy-provider index.js"
+}
+
   "dependencies": {
     "@whiskeysockets/baileys": "^6.4.0",
     "dotenv": "^17.0.1",
