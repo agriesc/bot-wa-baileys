@@ -23,11 +23,16 @@ const handleCari = require("./bot/commands/cari");
 const handleRingkas = require("./bot/commands/ringkas");
 const handleLaporan = require("./bot/commands/laporan");
 
-// Setup express
 const app = express();
 app.use(fileUpload());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Jalankan Express Server
+const port = process.env.PORT || 10000;
+app.listen(port, () => {
+  console.log(`🚀 Server Express jalan di http://localhost:${port}`);
+});
 
 // Upload auth_info.zip dari Postman
 app.post("/upload-auth", async (req, res) => {
@@ -47,105 +52,112 @@ app.post("/upload-auth", async (req, res) => {
 
     fs.unlinkSync(tempPath);
     res.send("✅ auth_info berhasil diunggah & diekstrak");
+
+    // Jika cred.json tersedia, langsung mulai koneksi WA
+    const credPath = path.join(__dirname, "auth_info/cred.json");
+    if (fs.existsSync(credPath)) {
+      console.log(
+        "✅ cred.json ditemukan setelah upload. Menjalankan WhatsApp socket..."
+      );
+      startSock();
+    } else {
+      console.log("⚠️ File cred.json tetap belum ditemukan setelah unzip");
+    }
   } catch (err) {
     console.error("❌ Upload auth_info gagal:", err);
     res.status(500).send("Upload gagal");
   }
 });
 
-// Jalankan server Express
-const port = process.env.PORT || 10000;
-app.listen(port, () => {
-  console.log(`🚀 Server Express jalan di http://localhost:${port}`);
-});
+// Cek koneksi awal (hanya jika sudah ada auth_info)
+const credPath = path.join(__dirname, "auth_info/cred.json");
+if (fs.existsSync(credPath)) {
+  console.log("✅ cred.json ditemukan saat startup. Menjalankan koneksi WA...");
+  startSock();
+} else {
+  console.log("⏳ Menunggu upload cred.json lewat endpoint POST /upload-auth");
+}
 
 // Jalankan koneksi Baileys
 async function startSock() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`💡 WA Web Version: ${version}, is latest: ${isLatest}`);
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`💡 WA Web Version: ${version}, is latest: ${isLatest}`);
 
-  const sock = makeWASocket({
-    version,
-    logger: P({ level: "silent" }),
-    printQRInTerminal: false, // nonaktifkan QR ASCII
-    auth: state,
-    syncFullHistory: false,
-  });
+    const sock = makeWASocket({
+      version,
+      logger: P({ level: "silent" }),
+      printQRInTerminal: false,
+      auth: state,
+      syncFullHistory: false,
+    });
 
-  sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    sock.ev.on("connection.update", async (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-        qr
-      )}`;
-      console.log("📸 Scan QR Code ini di browser:");
-      console.log(qrUrl);
+      if (qr) {
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
+          qr
+        )}`;
+        console.log("📸 Scan QR Code ini di browser:");
+        console.log(qrUrl);
+      }
+
+      if (connection === "close") {
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !==
+          DisconnectReason.loggedOut;
+        console.log("⛔ Connection closed. Reconnecting:", shouldReconnect);
+        if (shouldReconnect) startSock();
+      } else if (connection === "open") {
+        console.log("✅ WhatsApp terhubung!");
+      }
+    });
+
+    // Google Sheets
+    const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
+    const creds = JSON.parse(fs.readFileSync("auth_info/cred.json", "utf-8"));
+    await doc.useServiceAccountAuth(creds);
+    await doc.loadInfo();
+
+    const sheet = doc.sheetsByTitle["Jurnal"];
+    if (!sheet) {
+      console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
+      return;
     }
 
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut;
-      console.log("⛔ Connection closed. Reconnecting:", shouldReconnect);
-      if (shouldReconnect) startSock();
-    } else if (connection === "open") {
-      console.log("✅ WhatsApp terhubung!");
-    }
-  });
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message) return;
 
-  // Google Sheets
-  const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-  const creds = JSON.parse(fs.readFileSync("./auth_info/cred.json", "utf-8"));
-  await doc.useServiceAccountAuth(creds);
-  await doc.loadInfo();
+      try {
+        const text =
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption ||
+          "";
 
-  const sheet = doc.sheetsByTitle["Jurnal"];
-  if (!sheet) {
-    console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
-    return;
+        const isGroup = msg.key.remoteJid.endsWith("@g.us");
+        const remoteJid = msg.key.remoteJid;
+
+        await handleInfo(text, isGroup, sock, remoteJid);
+        await handleCatat(text, isGroup, sock, remoteJid, sheet);
+        await handleUbah(text, isGroup, sock, remoteJid, sheet);
+        await handleHapus(text, isGroup, sock, remoteJid, sheet);
+        await handleSaldo(text, isGroup, sock, remoteJid, sheet);
+        await handleCari(text, isGroup, sock, remoteJid, sheet);
+        await handleRingkas(text, isGroup, sock, remoteJid, sheet);
+        await handleLaporan(text, isGroup, sock, remoteJid, sheet);
+      } catch (err) {
+        console.error("❌ Error saat memproses pesan:", err);
+      }
+    });
+  } catch (err) {
+    console.error("❌ Gagal menjalankan WhatsApp socket:", err);
   }
-
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message) return;
-
-    try {
-      const text =
-        msg.message?.conversation ||
-        msg.message?.extendedTextMessage?.text ||
-        msg.message?.imageMessage?.caption ||
-        "";
-
-      const isGroup = msg.key.remoteJid.endsWith("@g.us");
-      const remoteJid = msg.key.remoteJid;
-
-      await handleInfo(text, isGroup, sock, remoteJid);
-      await handleCatat(text, isGroup, sock, remoteJid, sheet);
-      await handleUbah(text, isGroup, sock, remoteJid, sheet);
-      await handleHapus(text, isGroup, sock, remoteJid, sheet);
-      await handleSaldo(text, isGroup, sock, remoteJid, sheet);
-      await handleCari(text, isGroup, sock, remoteJid, sheet);
-      await handleRingkas(text, isGroup, sock, remoteJid, sheet);
-      await handleLaporan(text, isGroup, sock, remoteJid, sheet);
-    } catch (err) {
-      console.error("❌ Error saat memproses pesan:", err);
-    }
-  });
-}
-
-// Pastikan file cred.json ada sebelum mulai
-const credPath = path.join(__dirname, "auth_info/cred.json");
-if (!fs.existsSync(credPath)) {
-  console.log(
-    "❌ File auth_info/cred.json belum tersedia. Upload dulu via POST /upload-auth."
-  );
-} else {
-  console.log("✅ File cred.json ditemukan, melanjutkan koneksi...");
-  startSock();
 }
 
 // require("dotenv").config();
