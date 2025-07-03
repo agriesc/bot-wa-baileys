@@ -6,3 +6,5 @@ credentials.json
 *.bak
 npm-debug.log
 .DS_Store
+bot-wa-keuangan-464310-8a285c706996.json
+convert-private-key.js

@@ -131,7 +131,11 @@ app.get("/ping", (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+startSock().catch((err) => {
+  console.error("❌ Gagal start bot:", err);
+});
+
+const PORT = process.env.PORT;
 app.listen(PORT, () => {
-  console.log("Express server is running on port", PORT);
+  console.log(`✅ Express server running on port ${PORT}`);
 });
