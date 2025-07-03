@@ -1,34 +1,38 @@
-require("dotenv").config();
-const express = require("express");
-const fileUpload = require("express-fileupload");
-const fs = require("fs");
-const unzipper = require("unzipper");
-const P = require("pino");
 const {
-  makeWASocket,
+  default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
+const P = require("pino");
+const fs = require("fs");
+const express = require("express");
+const fileUpload = require("express-fileupload");
+const unzipper = require("unzipper");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
+require("dotenv").config();
 
-// Custom handlers
-const { handleInfo } = require("./features/info");
-const { handleCatat } = require("./features/catat");
-const { handleUbah } = require("./features/ubah");
-const { handleHapus } = require("./features/hapus");
-const { handleSaldo } = require("./features/saldo");
-const { handleCari } = require("./features/cari");
-const { handleRingkas } = require("./features/ringkas");
-const { handleLaporan } = require("./features/laporan");
+// Import fitur
+const handleInfo = require("./bot/commands/info");
+const handleCatat = require("./bot/commands/catat");
+const handleUbah = require("./bot/commands/ubah");
+const handleHapus = require("./bot/commands/hapus");
+const handleSaldo = require("./bot/commands/saldo");
+const handleCari = require("./bot/commands/cari");
+const handleRingkas = require("./bot/commands/ringkas");
+const handleLaporan = require("./bot/commands/laporan");
 
+// Setup express
 const app = express();
 app.use(fileUpload());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Upload auth_info.zip dari Postman
 app.post("/upload-auth", async (req, res) => {
   try {
     if (!req.files || !req.files.authZip) {
-      return res.status(400).send("❌ File tidak ditemukan");
+      return res.status(400).send("No file uploaded");
     }
 
     const zipBuffer = req.files.authZip.data;
@@ -48,11 +52,13 @@ app.post("/upload-auth", async (req, res) => {
   }
 });
 
-app.listen(10000, () => {
-  console.log("✅ Express server running on port 10000");
-  startSock(); // langsung jalan saat server hidup
+// Jalankan server Express
+const port = process.env.PORT || 10000;
+app.listen(port, () => {
+  console.log(`🚀 Server Express jalan di http://localhost:${port}`);
 });
 
+// Jalankan koneksi Baileys
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
   const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -61,7 +67,7 @@ async function startSock() {
   const sock = makeWASocket({
     version,
     logger: P({ level: "silent" }),
-    printQRInTerminal: false,
+    printQRInTerminal: false, // nonaktifkan QR ASCII
     auth: state,
     syncFullHistory: false,
   });
@@ -72,9 +78,9 @@ async function startSock() {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      const qrUrl =
-        "https://api.qrserver.com/v1/create-qr-code/?data=" +
-        encodeURIComponent(qr);
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
+        qr
+      )}`;
       console.log("📸 Scan QR Code ini di browser:");
       console.log(qrUrl);
     }
@@ -90,17 +96,9 @@ async function startSock() {
     }
   });
 
-  // Load credentials secara aman setelah koneksi WA
-  const credPath = "./auth_info/cred.json";
-  if (!fs.existsSync(credPath)) {
-    console.error(
-      "❌ auth_info/cred.json tidak ditemukan. Google Sheet tidak bisa digunakan."
-    );
-    return;
-  }
-
-  const creds = JSON.parse(fs.readFileSync(credPath));
+  // Google Sheets
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
+  const creds = require("./auth_info/cred.json");
   await doc.useServiceAccountAuth(creds);
   await doc.loadInfo();
   const sheet = doc.sheetsByTitle["Jurnal"];
@@ -124,18 +122,20 @@ async function startSock() {
       const remoteJid = msg.key.remoteJid;
 
       await handleInfo(text, isGroup, sock, remoteJid);
-      await handleCatat(text, isGroup, sock, remoteJid);
-      await handleUbah(text, isGroup, sock, remoteJid);
-      await handleHapus(text, isGroup, sock, remoteJid);
+      await handleCatat(text, isGroup, sock, remoteJid, sheet);
+      await handleUbah(text, isGroup, sock, remoteJid, sheet);
+      await handleHapus(text, isGroup, sock, remoteJid, sheet);
       await handleSaldo(text, isGroup, sock, remoteJid, sheet);
-      await handleCari(text, isGroup, sock, remoteJid);
-      await handleRingkas(text, isGroup, sock, remoteJid);
-      await handleLaporan(text, isGroup, sock, remoteJid);
+      await handleCari(text, isGroup, sock, remoteJid, sheet);
+      await handleRingkas(text, isGroup, sock, remoteJid, sheet);
+      await handleLaporan(text, isGroup, sock, remoteJid, sheet);
     } catch (err) {
       console.error("❌ Error saat memproses pesan:", err);
     }
   });
 }
+
+startSock();
 
 // require("dotenv").config();
 // const {
