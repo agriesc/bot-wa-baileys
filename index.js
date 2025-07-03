@@ -1,19 +1,17 @@
 require("dotenv").config();
-const express = require("express");
-const fileUpload = require("express-fileupload");
-const fs = require("fs");
-const unzipper = require("unzipper");
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
-const qrcode = require("qrcode-terminal");
 const P = require("pino");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
+const express = require("express");
+const fileUpload = require("express-fileupload");
+const fs = require("fs");
+const unzipper = require("unzipper");
 
-// 🔐 Kredensial Google Sheets
 const creds = {
   type: "service_account",
   project_id: process.env.GOOGLE_PROJECT_ID,
@@ -30,13 +28,13 @@ const creds = {
   universe_domain: "googleapis.com",
 };
 
-// 🔧 Modular utils & commands
+// ✅ Modular utils
 const { formatIDR } = require("./bot/utils/formatIDR");
 const { parseNominal } = require("./bot/utils/nominal");
 const { parseDateFromCell } = require("./bot/utils/tanggal");
 const toProperCase = require("./bot/utils/toProperCase");
-const { getDateRangeByType } = require("./bot/utils/tanggal");
 
+// ✅ Commands
 const handleInfo = require("./bot/commands/info");
 const handleCatat = require("./bot/commands/catat");
 const handleUbah = require("./bot/commands/ubah");
@@ -45,6 +43,9 @@ const handleSaldo = require("./bot/commands/saldo");
 const handleCari = require("./bot/commands/cari");
 const handleRingkas = require("./bot/commands/ringkas");
 const handleLaporan = require("./bot/commands/laporan");
+
+// ✅ Lainnya
+const { getDateRangeByType } = require("./bot/utils/tanggal");
 
 const sumberDanaMap = {
   dompet: "Dompet",
@@ -57,50 +58,7 @@ const sumberDanaMap = {
   "e-money": "e-money",
 };
 
-// ✅ Express setup
-const app = express();
-app.use(fileUpload());
-
-// Endpoint utama
-app.get("/", (req, res) => {
-  res.send("Bot WA Aktif 🚀");
-});
-
-app.get("/ping", (req, res) => {
-  res.status(200).json({
-    status: "alive",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Endpoint upload auth_info.zip
-app.post("/upload-auth", async (req, res) => {
-  try {
-    if (!req.files || !req.files.authZip) {
-      return res.status(400).send("No file uploaded");
-    }
-
-    const zipBuffer = req.files.authZip.data;
-    const tempPath = "auth_info.zip";
-    fs.writeFileSync(tempPath, zipBuffer);
-
-    await fs
-      .createReadStream(tempPath)
-      .pipe(unzipper.Extract({ path: "auth_info" }))
-      .promise();
-
-    fs.unlinkSync(tempPath);
-    res.send("✅ auth_info berhasil diunggah & diekstrak");
-  } catch (err) {
-    console.error("❌ Upload auth_info gagal:", err);
-    res.status(500).send("Upload gagal");
-  }
-});
-
-// ✅ WhatsApp Socket
 async function startSock() {
-  console.log("🚀 Memulai koneksi ke WhatsApp...");
-
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`💡 WA Web Version: ${version}, is latest: ${isLatest}`);
@@ -108,28 +66,24 @@ async function startSock() {
   const sock = makeWASocket({
     version,
     logger: P({ level: "silent" }),
-    printQRInTerminal: true,
+    printQRInTerminal: false, // ⛔ nonaktifkan QR ASCII
     auth: state,
     syncFullHistory: false,
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  // Init Google Sheet
-  const doc = new GoogleSpreadsheet(
-    "1nb-kfGUkoYMHSEgqOVU_peP9iSKbqs2GgjcRjoI50cU"
-  );
-  await doc.useServiceAccountAuth(creds);
-  await doc.loadInfo();
-  const sheet = doc.sheetsByTitle["Jurnal"];
-  if (!sheet) {
-    console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
-    return;
-  }
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-  // Koneksi update
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
+    if (qr) {
+      const qrUrl =
+        "https://api.qrserver.com/v1/create-qr-code/?data=" +
+        encodeURIComponent(qr);
+      console.log("📸 Scan QR Code ini di browser:");
+      console.log(qrUrl);
+    }
+
     if (connection === "close") {
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !==
@@ -141,7 +95,18 @@ async function startSock() {
     }
   });
 
-  // Pesan masuk
+  // Inisialisasi Google Sheet
+  const doc = new GoogleSpreadsheet(
+    "1nb-kfGUkoYMHSEgqOVU_peP9iSKbqs2GgjcRjoI50cU"
+  );
+  await doc.useServiceAccountAuth(creds);
+  await doc.loadInfo();
+  const sheet = doc.sheetsByTitle["Jurnal"];
+  if (!sheet) {
+    console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
+    return;
+  }
+
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
@@ -170,13 +135,50 @@ async function startSock() {
   });
 }
 
-// ✅ Jalankan Express dulu, baru WhatsApp socket
+// ✅ Express server
+const app = express();
+app.use(fileUpload());
+
+app.post("/upload-auth", async (req, res) => {
+  try {
+    if (!req.files || !req.files.authZip) {
+      return res.status(400).send("No file uploaded");
+    }
+
+    const zipBuffer = req.files.authZip.data;
+    const tempPath = "auth_info.zip";
+    fs.writeFileSync(tempPath, zipBuffer);
+
+    await fs
+      .createReadStream(tempPath)
+      .pipe(unzipper.Extract({ path: "auth_info" }))
+      .promise();
+
+    fs.unlinkSync(tempPath);
+    res.send("✅ auth_info berhasil diunggah & diekstrak");
+  } catch (err) {
+    console.error("❌ Upload auth_info gagal:", err);
+    res.status(500).send("Upload gagal");
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("Bot WA Aktif 🚀");
+});
+
+app.get("/ping", (req, res) => {
+  res.status(200).json({
+    status: "alive",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// ✅ Mulai Express + WhatsApp Socket
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`✅ Express server running on port ${PORT}`);
+});
 
-  // Start WhatsApp socket setelah server hidup
-  startSock().catch((err) => {
-    console.error("❌ Gagal start bot:", err);
-  });
+startSock().catch((err) => {
+  console.error("❌ Gagal start bot:", err);
 });
