@@ -125,6 +125,39 @@ async function startSock() {
 const express = require("express");
 const app = express();
 
+const fileUpload = require("express-fileupload");
+const fs = require("fs");
+const unzipper = require("unzipper");
+
+app.use(fileUpload());
+
+// ENDPOINT UPLOAD auth_info.zip
+app.post("/upload-auth", async (req, res) => {
+  try {
+    if (!req.files || !req.files.authZip) {
+      return res.status(400).send("No file uploaded");
+    }
+
+    const zipBuffer = req.files.authZip.data;
+
+    // Simpan sementara zip
+    const tempPath = "auth_info.zip";
+    fs.writeFileSync(tempPath, zipBuffer);
+
+    // Ekstrak ke folder auth_info/
+    await fs
+      .createReadStream(tempPath)
+      .pipe(unzipper.Extract({ path: "auth_info" }))
+      .promise();
+
+    fs.unlinkSync(tempPath); // Hapus zip
+    res.send("✅ auth_info berhasil diunggah & diekstrak");
+  } catch (err) {
+    console.error("❌ Upload auth_info gagal:", err);
+    res.status(500).send("Upload gagal");
+  }
+});
+
 app.get("/", (req, res) => {
   res.send("Bot WA Aktif 🚀");
 });

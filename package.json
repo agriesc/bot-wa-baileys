@@ -9,6 +9,7 @@
     "@whiskeysockets/baileys": "^6.4.0",
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
+    "express-fileupload": "^1.5.1",
     "google-spreadsheet": "^3.3.0",
     "pino": "^8.0.0",
     "qrcode-terminal": "^0.12.0"
