@@ -6,6 +6,7 @@ const {
 } = require("@whiskeysockets/baileys");
 const P = require("pino");
 const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const fileUpload = require("express-fileupload");
 const unzipper = require("unzipper");
@@ -98,16 +99,10 @@ async function startSock() {
 
   // Google Sheets
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-  if (!fs.existsSync("./auth_info/cred.json")) {
-    console.error(
-      "❌ File auth_info/cred.json belum tersedia. Upload dulu via POST /upload-auth."
-    );
-    return;
-  }
   const creds = JSON.parse(fs.readFileSync("./auth_info/cred.json", "utf-8"));
   await doc.useServiceAccountAuth(creds);
-
   await doc.loadInfo();
+
   const sheet = doc.sheetsByTitle["Jurnal"];
   if (!sheet) {
     console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
@@ -141,21 +136,17 @@ async function startSock() {
     }
   });
 }
-const fs = require("fs");
-const path = require("path");
 
+// Pastikan file cred.json ada sebelum mulai
 const credPath = path.join(__dirname, "auth_info/cred.json");
-
 if (!fs.existsSync(credPath)) {
   console.log(
     "❌ File auth_info/cred.json belum tersedia. Upload dulu via POST /upload-auth."
   );
-  return;
 } else {
   console.log("✅ File cred.json ditemukan, melanjutkan koneksi...");
+  startSock();
 }
-
-startSock();
 
 // require("dotenv").config();
 // const {
