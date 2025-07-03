@@ -76,6 +76,10 @@ async function startSock() {
   await doc.useServiceAccountAuth(creds);
   await doc.loadInfo();
   const sheet = doc.sheetsByTitle["Jurnal"];
+  if (!sheet) {
+    console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
+    return;
+  }
 
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect } = update;
@@ -83,10 +87,10 @@ async function startSock() {
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !==
         DisconnectReason.loggedOut;
-      console.log("\u{26D4} Connection closed. Reconnecting:", shouldReconnect);
+      console.log("⛔ Connection closed. Reconnecting:", shouldReconnect);
       if (shouldReconnect) startSock();
     } else if (connection === "open") {
-      console.log("\u{2705} WhatsApp terhubung!");
+      console.log("✅ WhatsApp terhubung!");
     }
   });
 
@@ -94,28 +98,29 @@ async function startSock() {
     const msg = messages[0];
     if (!msg.message) return;
 
-    const text =
-      msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption ||
-      "";
+    try {
+      const text =
+        msg.message?.conversation ||
+        msg.message?.extendedTextMessage?.text ||
+        msg.message?.imageMessage?.caption ||
+        "";
 
-    const isGroup = msg.key.remoteJid.endsWith("@g.us");
+      const isGroup = msg.key.remoteJid.endsWith("@g.us");
+      const remoteJid = msg.key.remoteJid;
 
-    const remoteJid = msg.key.remoteJid;
-
-    await handleInfo(text, isGroup, sock, remoteJid);
-    await handleCatat(text, isGroup, sock, msg.key.remoteJid);
-    await handleUbah(text, isGroup, sock, msg.key.remoteJid);
-    await handleHapus(text, isGroup, sock, msg.key.remoteJid);
-    await handleSaldo(text, isGroup, sock, msg.key.remoteJid, sheet);
-    await handleCari(text, isGroup, sock, msg.key.remoteJid);
-    await handleRingkas(text, isGroup, sock, remoteJid);
-    await handleLaporan(text, isGroup, sock, remoteJid);
+      await handleInfo(text, isGroup, sock, remoteJid);
+      await handleCatat(text, isGroup, sock, remoteJid);
+      await handleUbah(text, isGroup, sock, remoteJid);
+      await handleHapus(text, isGroup, sock, remoteJid);
+      await handleSaldo(text, isGroup, sock, remoteJid, sheet);
+      await handleCari(text, isGroup, sock, remoteJid);
+      await handleRingkas(text, isGroup, sock, remoteJid);
+      await handleLaporan(text, isGroup, sock, remoteJid);
+    } catch (err) {
+      console.error("❌ Error saat memproses pesan:", err);
+    }
   });
 }
-
-startSock();
 
 const express = require("express");
 const app = express();
@@ -135,7 +140,7 @@ startSock().catch((err) => {
   console.error("❌ Gagal start bot:", err);
 });
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`✅ Express server running on port ${PORT}`);
 });
