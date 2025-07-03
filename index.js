@@ -1,40 +1,34 @@
 require("dotenv").config();
 const express = require("express");
 const fileUpload = require("express-fileupload");
-const unzipper = require("unzipper");
 const fs = require("fs");
-const path = require("path");
+const unzipper = require("unzipper");
 const P = require("pino");
 const {
   makeWASocket,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
   DisconnectReason,
+  fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
-const creds = require("./auth_info/cred.json");
 
-const {
-  handleInfo,
-  handleCatat,
-  handleUbah,
-  handleHapus,
-  handleSaldo,
-  handleCari,
-  handleRingkas,
-  handleLaporan,
-} = require("./handlers");
+// Custom handlers
+const { handleInfo } = require("./features/info");
+const { handleCatat } = require("./features/catat");
+const { handleUbah } = require("./features/ubah");
+const { handleHapus } = require("./features/hapus");
+const { handleSaldo } = require("./features/saldo");
+const { handleCari } = require("./features/cari");
+const { handleRingkas } = require("./features/ringkas");
+const { handleLaporan } = require("./features/laporan");
 
 const app = express();
-const PORT = process.env.PORT || 10000;
-
 app.use(fileUpload());
 
-// ========== UPLOAD auth_info.zip ==========
 app.post("/upload-auth", async (req, res) => {
   try {
     if (!req.files || !req.files.authZip) {
-      return res.status(400).send("❌ Tidak ada file yang diunggah");
+      return res.status(400).send("❌ File tidak ditemukan");
     }
 
     const zipBuffer = req.files.authZip.data;
@@ -45,8 +39,8 @@ app.post("/upload-auth", async (req, res) => {
       .createReadStream(tempPath)
       .pipe(unzipper.Extract({ path: "auth_info" }))
       .promise();
-    fs.unlinkSync(tempPath);
 
+    fs.unlinkSync(tempPath);
     res.send("✅ auth_info berhasil diunggah & diekstrak");
   } catch (err) {
     console.error("❌ Upload auth_info gagal:", err);
@@ -54,50 +48,14 @@ app.post("/upload-auth", async (req, res) => {
   }
 });
 
-// ========== START BOT ==========
-let botSudahJalan = false;
-
-app.get("/start-bot", async (req, res) => {
-  if (botSudahJalan) return res.send("Bot sudah berjalan.");
-
-  const authPath = path.join(__dirname, "auth_info", "creds.json");
-  if (!fs.existsSync(authPath)) {
-    return res
-      .status(400)
-      .send("❌ creds.json belum ditemukan. Upload auth_info dulu.");
-  }
-
-  await startSock();
-  botSudahJalan = true;
-  res.send("✅ Bot dimulai.");
+app.listen(10000, () => {
+  console.log("✅ Express server running on port 10000");
+  startSock(); // langsung jalan saat server hidup
 });
 
-// ========== DEFAULT ==========
-app.get("/", (req, res) => {
-  res.send("✅ Express server aktif.");
-});
-
-// ========== SERVER RUN ==========
-app.listen(PORT, () => {
-  console.log(`✅ Express server running on port ${PORT}`);
-
-  const authPath = path.join(__dirname, "auth_info", "creds.json");
-  if (fs.existsSync(authPath)) {
-    console.log(
-      "✅ creds.json ditemukan. Bot bisa dijalankan lewat /start-bot"
-    );
-  } else {
-    console.log(
-      "❌ creds.json belum ditemukan. Upload auth_info.zip lewat /upload-auth"
-    );
-  }
-});
-
-// ========== FUNGSI BOT ==========
 async function startSock() {
   const { state, saveCreds } = await useMultiFileAuthState("auth_info");
   const { version, isLatest } = await fetchLatestBaileysVersion();
-
   console.log(`💡 WA Web Version: ${version}, is latest: ${isLatest}`);
 
   const sock = makeWASocket({
@@ -132,7 +90,16 @@ async function startSock() {
     }
   });
 
-  // ========== INISIALISASI GOOGLE SHEET ==========
+  // Load credentials secara aman setelah koneksi WA
+  const credPath = "./auth_info/cred.json";
+  if (!fs.existsSync(credPath)) {
+    console.error(
+      "❌ auth_info/cred.json tidak ditemukan. Google Sheet tidak bisa digunakan."
+    );
+    return;
+  }
+
+  const creds = JSON.parse(fs.readFileSync(credPath));
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
   await doc.useServiceAccountAuth(creds);
   await doc.loadInfo();
