@@ -98,8 +98,15 @@ async function startSock() {
 
   // Google Sheets
   const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-  const creds = require("./auth_info/cred.json");
+  if (!fs.existsSync("./auth_info/cred.json")) {
+    console.error(
+      "❌ File auth_info/cred.json belum tersedia. Upload dulu via POST /upload-auth."
+    );
+    return;
+  }
+  const creds = JSON.parse(fs.readFileSync("./auth_info/cred.json", "utf-8"));
   await doc.useServiceAccountAuth(creds);
+
   await doc.loadInfo();
   const sheet = doc.sheetsByTitle["Jurnal"];
   if (!sheet) {
