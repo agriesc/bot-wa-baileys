@@ -53,15 +53,15 @@ app.post("/upload-auth", async (req, res) => {
     fs.unlinkSync(tempPath);
     res.send("✅ auth_info berhasil diunggah & diekstrak");
 
-    // Jika cred.json tersedia, langsung mulai koneksi WA
-    const credPath = path.join(__dirname, "auth_info/cred.json");
+    // Jika creds.json tersedia, langsung mulai koneksi WA
+    const credPath = path.join(__dirname, "auth_info/creds.json");
     if (fs.existsSync(credPath)) {
       console.log(
-        "✅ cred.json ditemukan setelah upload. Menjalankan WhatsApp socket..."
+        "✅ creds.json ditemukan setelah upload. Menjalankan WhatsApp socket..."
       );
       startSock();
     } else {
-      console.log("⚠️ File cred.json tetap belum ditemukan setelah unzip");
+      console.log("⚠️ File creds.json tetap belum ditemukan setelah unzip");
     }
   } catch (err) {
     console.error("❌ Upload auth_info gagal:", err);
@@ -70,12 +70,14 @@ app.post("/upload-auth", async (req, res) => {
 });
 
 // Cek koneksi awal (hanya jika sudah ada auth_info)
-const credPath = path.join(__dirname, "auth_info/cred.json");
+const credPath = path.join(__dirname, "auth_info/creds.json");
 if (fs.existsSync(credPath)) {
-  console.log("✅ cred.json ditemukan saat startup. Menjalankan koneksi WA...");
+  console.log(
+    "✅ creds.json ditemukan saat startup. Menjalankan koneksi WA..."
+  );
   startSock();
 } else {
-  console.log("⏳ Menunggu upload cred.json lewat endpoint POST /upload-auth");
+  console.log("⏳ Menunggu upload creds.json lewat endpoint POST /upload-auth");
 }
 
 // Jalankan koneksi Baileys
@@ -119,7 +121,7 @@ async function startSock() {
 
     // Google Sheets
     const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-    const creds = JSON.parse(fs.readFileSync("auth_info/cred.json", "utf-8"));
+    const creds = JSON.parse(fs.readFileSync("auth_info/creds.json", "utf-8"));
     await doc.useServiceAccountAuth(creds);
     await doc.loadInfo();
 
