@@ -141,6 +141,19 @@ async function startSock() {
     }
   });
 }
+const fs = require("fs");
+const path = require("path");
+
+const credPath = path.join(__dirname, "auth_info/cred.json");
+
+if (!fs.existsSync(credPath)) {
+  console.log(
+    "❌ File auth_info/cred.json belum tersedia. Upload dulu via POST /upload-auth."
+  );
+  return;
+} else {
+  console.log("✅ File cred.json ditemukan, melanjutkan koneksi...");
+}
 
 startSock();
 
