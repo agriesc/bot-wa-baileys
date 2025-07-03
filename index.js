@@ -12,7 +12,7 @@ const {
   DisconnectReason,
 } = require("@whiskeysockets/baileys");
 const { GoogleSpreadsheet } = require("google-spreadsheet");
-const creds = require("./cred.json");
+const creds = require("./auth_info/cred.json");
 
 const {
   handleInfo,
