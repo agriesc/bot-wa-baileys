@@ -47,7 +47,7 @@ app.post("/upload-auth", async (req, res) => {
 
     await fs
       .createReadStream(tempPath)
-      .pipe(unzipper.Extract({ path: "auth_info" }))
+      .pipe(unzipper.Extract({ path: "." }))
       .promise();
 
     fs.unlinkSync(tempPath);
