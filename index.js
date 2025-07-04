@@ -1,88 +1,29 @@
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require("@whiskeysockets/baileys");
-const P = require("pino");
-const fs = require("fs");
-const path = require("path");
-const express = require("express");
-const fileUpload = require("express-fileupload");
-const unzipper = require("unzipper");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
-require("dotenv").config();
-
-// Import fitur
-const handleInfo = require("./bot/commands/info");
-const handleCatat = require("./bot/commands/catat");
-const handleUbah = require("./bot/commands/ubah");
-const handleHapus = require("./bot/commands/hapus");
-const handleSaldo = require("./bot/commands/saldo");
-const handleCari = require("./bot/commands/cari");
-const handleRingkas = require("./bot/commands/ringkas");
-const handleLaporan = require("./bot/commands/laporan");
-
-const app = express();
-app.use(fileUpload());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Jalankan Express Server
-const port = process.env.PORT || 10000;
-app.listen(port, () => {
-  console.log(`🚀 Server Express jalan di http://localhost:${port}`);
-});
-
-// Upload auth_info.zip dari Postman
-app.post("/upload-auth", async (req, res) => {
-  try {
-    if (!req.files || !req.files.authZip) {
-      return res.status(400).send("No file uploaded");
-    }
-
-    const zipBuffer = req.files.authZip.data;
-    const tempPath = "auth_info.zip";
-    fs.writeFileSync(tempPath, zipBuffer);
-
-    await fs
-      .createReadStream(tempPath)
-      .pipe(unzipper.Extract({ path: "." }))
-      .promise();
-
-    fs.unlinkSync(tempPath);
-    res.send("✅ auth_info berhasil diunggah & diekstrak");
-
-    // Jika creds.json tersedia, langsung mulai koneksi WA
-    const credPath = path.join(__dirname, "auth_info/creds.json");
-    if (fs.existsSync(credPath)) {
-      console.log(
-        "✅ creds.json ditemukan setelah upload. Menjalankan WhatsApp socket..."
-      );
-      startSock();
-    } else {
-      console.log("⚠️ File creds.json tetap belum ditemukan setelah unzip");
-    }
-  } catch (err) {
-    console.error("❌ Upload auth_info gagal:", err);
-    res.status(500).send("Upload gagal");
-  }
-});
-
-// Cek koneksi awal (hanya jika sudah ada auth_info)
-const credPath = path.join(__dirname, "auth_info/creds.json");
-if (fs.existsSync(credPath)) {
-  console.log(
-    "✅ creds.json ditemukan saat startup. Menjalankan koneksi WA..."
-  );
-  startSock();
-} else {
-  console.log("⏳ Menunggu upload creds.json lewat endpoint POST /upload-auth");
-}
-
 // Jalankan koneksi Baileys
 async function startSock() {
   try {
+    // --- Google Sheets ---
+    const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
+    const creds = require("./auth_info/creds.json");
+
+    await doc.useServiceAccountAuth({
+      client_email: creds.client_email,
+      private_key: creds.private_key.replace(/\\n/g, "\n"), // wajib
+    });
+
+    try {
+      await doc.loadInfo();
+    } catch (e) {
+      console.error("❌ Gagal load Google Sheet:", e.message);
+      return; // STOP JIKA GAGAL
+    }
+
+    const sheet = doc.sheetsByTitle["Jurnal"];
+    if (!sheet) {
+      console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
+      return;
+    }
+
+    // --- WhatsApp Socket ---
     const { state, saveCreds } = await useMultiFileAuthState("auth_info");
     const { version, isLatest } = await fetchLatestBaileysVersion();
     console.log(`💡 WA Web Version: ${version}, is latest: ${isLatest}`);
@@ -118,25 +59,6 @@ async function startSock() {
         console.log("✅ WhatsApp terhubung!");
       }
     });
-
-    // Google Sheets
-    const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-
-    // Pastikan path-nya sesuai dengan ZIP hasil ekstrak (biasanya `auth_info/creds.json`)
-    const creds = require("./auth_info/creds.json");
-
-    await doc.useServiceAccountAuth({
-      client_email: creds.client_email,
-      private_key: creds.private_key.replace(/\\n/g, "\n"), // penting!
-    });
-
-    await doc.loadInfo();
-
-    const sheet = doc.sheetsByTitle["Jurnal"];
-    if (!sheet) {
-      console.error("❌ Sheet 'Jurnal' tidak ditemukan!");
-      return;
-    }
 
     sock.ev.on("messages.upsert", async ({ messages }) => {
       const msg = messages[0];
