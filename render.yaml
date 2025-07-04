@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: bot-wa-baileys
+    env: node
+    repo: https://github.com/agriesc/bot-wa-baileys
+    branch: main
+    buildCommand: npm install
+    startCommand: node --openssl-legacy-provider index.js
+    envVars:
+      - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_EMAIL
+        sync: false
+      - key: GOOGLE_PRIVATE_KEY_ID
+        sync: false
+      - key: GOOGLE_PROJECT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
