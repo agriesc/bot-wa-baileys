@@ -12,3 +12,8 @@ auth_info.zip
 !auth_info/
 auth_info/*
 !auth_info/.gitkeep
+auth_info.backup
+auth_info_rev
+auth_info 2
+
+

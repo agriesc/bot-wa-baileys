@@ -121,8 +121,15 @@ async function startSock() {
 
     // Google Sheets
     const doc = new GoogleSpreadsheet(process.env.SHEET_ID);
-    const creds = JSON.parse(fs.readFileSync("auth_info/creds.json", "utf-8"));
-    await doc.useServiceAccountAuth(creds);
+
+    // Pastikan path-nya sesuai dengan ZIP hasil ekstrak (biasanya `auth_info/creds.json`)
+    const creds = require("./auth_info/creds.json");
+
+    await doc.useServiceAccountAuth({
+      client_email: creds.client_email,
+      private_key: creds.private_key.replace(/\\n/g, "\n"), // penting!
+    });
+
     await doc.loadInfo();
 
     const sheet = doc.sheetsByTitle["Jurnal"];
